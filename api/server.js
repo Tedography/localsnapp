@@ -1,8 +1,14 @@
 import express from 'express';
 import { createClient } from '@supabase/supabase-js';
+import authRoutes from './auth.js'; // Bunu ekledik
 
 const app = express();
 app.use(express.json());
+
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+
+// Rotaları sisteme tanıtıyoruz
+app.use('/api/auth', authRoutes);
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
