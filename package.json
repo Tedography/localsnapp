@@ -1,0 +1,13 @@
+cat <<EOT > package.json
+{
+  "name": "localsnapp",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "express": "^4.18.2",
+    "@supabase/supabase-js": "^2.39.0",
+    "stripe": "^14.0.0",
+    "multer": "^1.4.5-lts.1"
+  }
+}
+EOT
