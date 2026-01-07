@@ -1,60 +1,43 @@
-const checkoutNodeJssdk = require('@paypal/checkout-server-sdk');
+import express from 'express';
+import fetch from 'node-fetch';
 
-// PayPal Ortamı Kurulumu
-function environment() {
-    let clientId = "AY2qXxdM1VHcYkh3G7Zosf0IbTn7VqMV2yn_w-imA3cYMNyavvnMl2vxPE0Ro2H2iaDkOnZl89u5LHwc";
-    let clientSecret = "EIN6GYMh0hxMZqKYtV5dZHiZjHwck4Rj49svBWaAIJol-fG9Pkmf8XrX3nYLZf6xo2u1HBEKhrzvShrl";
-    return new checkoutNodeJssdk.core.SandboxEnvironment(clientId, clientSecret);
-}
+const router = express.Router();
 
-function client() {
-    return new checkoutNodeJssdk.core.PayPalHttpClient(environment());
-}
+const PAYPAL_CLIENT_ID = "AY2qXxdM1VHcYkh3G7Zosf0IbTn7VqMV2yn_w-imA3cYMNyavvnMl2vxPE0Ro2H2iaDkOnZl89u5LHwc";
+const PAYPAL_CLIENT_SECRET = "EIN6GYMh0hxMZqKYtV5dZHiZjHwck4Rj49svBWaAIJol-fG9Pkmf8XrX3nYLZf6xo2u1HBEKhrzvShrl";
 
-// Sipariş Oluşturma
-async function createOrder(req, res) {
-    const request = new checkoutNodeJssdk.orders.OrdersCreateRequest();
-    request.prefer("return=representation");
-    request.requestBody({
-        intent: 'CAPTURE',
-        purchase_units: [{
-            amount: {
-                currency_code: 'USD',
-                value: req.body.amount || '100.00' // Dinamik tutar
-            }
-        }]
+async function getPayPalAccessToken() {
+    const auth = Buffer.from(PAYPAL_CLIENT_ID + ":" + PAYPAL_CLIENT_SECRET).toString("base64");
+    const response = await fetch("https://api-m.sandbox.paypal.com/v1/oauth2/token", {
+        method: "POST",
+        body: "grant_type=client_credentials",
+        headers: { Authorization: `Basic ${auth}` }
     });
-
-    try {
-        const order = await client().execute(request);
-        res.status(201).json({ id: order.result.id });
-    } catch (err) {
-        res.status(500).send(err.message);
-    }
+    const data = await response.json();
+    return data.access_token;
 }
 
-// Ödeme Onaylama ve Supabase Güncelleme
-async function captureOrder(req, res, supabase) {
-    const { orderID, bookingData } = req.body;
-    const request = new checkoutNodeJssdk.orders.OrdersCaptureRequest(orderID);
-    
+router.post('/create-paypal-order', async (req, res) => {
+    const { amount } = req.body;
     try {
-        const capture = await client().execute(request);
-        
-        // Ödeme başarılıysa Supabase'e kaydet
-        const { data, error } = await supabase
-            .from('bookings')
-            .insert([{ 
-                ...bookingData, 
-                status: 'paid', 
-                paypal_order_id: orderID,
-                payment_status: 'escrow' 
-            }]);
-
-        res.status(200).json(capture.result);
+        const accessToken = await getPayPalAccessToken();
+        const response = await fetch("https://api-m.sandbox.paypal.com/v2/checkout/orders", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+            body: JSON.stringify({
+                intent: "CAPTURE",
+                purchase_units: [{ amount: { currency_code: "GBP", value: amount } }],
+                application_context: {
+                    return_url: `${req.headers.origin}/dashboard`,
+                    cancel_url: `${req.headers.origin}/`
+                }
+            })
+        });
+        const order = await response.json();
+        res.json(order);
     } catch (err) {
-        res.status(500).send(err.message);
+        res.status(500).json({ error: err.message });
     }
-}
+});
 
-module.exports = { createOrder, captureOrder };
+export default router;
